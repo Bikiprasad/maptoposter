@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>City Map Poster Generator</title>
+    <style>
+        :root {
+            --bg: #0B0C10;
+            --card-bg: rgba(255, 255, 255, 0.02);
+            --text-main: #ffffff;
+            --text-muted: #94a3b8;
+            --border: rgba(255, 255, 255, 0.1);
+
+            --accent-green: #4ade80;
+            --accent-green-glow: rgba(74, 222, 128, 0.2);
+
+            --accent-blue: #60a5fa;
+            --accent-blue-glow: rgba(96, 165, 250, 0.2);
+
+            --input-bg: rgba(0, 0, 0, 0.3);
+
+            --font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-family);
+            background-color: var(--bg);
+            color: var(--text-main);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            min-height: 100vh;
+            flex-direction: column;
+            background-image: radial-gradient(circle at 50% 0%, #1a1c23 0%, #0B0C10 70%);
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 3rem 2rem;
+            width: 100%;
+            box-sizing: border-box;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 3rem;
+        }
+
+        .header {
+            width: 100%;
+            text-align: center;
+            margin-bottom: 1rem;
+        }
+
+        .header h1 {
+            font-size: 3.5rem;
+            font-weight: 800;
+            margin: 0;
+            letter-spacing: -0.05em;
+            background: linear-gradient(to right, #ffffff, #94a3b8);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header p {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+            margin-top: 1rem;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            line-height: 1.6;
+        }
+
+        .workspace {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            align-items: stretch;
+        }
+
+        @media (max-width: 900px) {
+            .workspace {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* CARD STYLES */
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 2rem;
+            backdrop-filter: blur(10px);
+            transition: transform 0.2s, border-color 0.2s;
+        }
+
+        .controls {
+            width: 100%;
+            min-width: 0;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Green Accent for Controls */
+        .controls::before {
+            content: '';
+            position: absolute;
+            top: -1px;
+            left: 10px;
+            right: 10px;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--accent-green), transparent);
+            opacity: 0.5;
+        }
+
+        .controls:focus-within {
+            border-color: var(--accent-green);
+            box-shadow: 0 0 30px var(--accent-green-glow);
+        }
+
+        .preview {
+            width: 100%;
+            min-width: 0;
+            min-height: 600px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        /* Blue Accent for Preview */
+        .preview::before {
+            content: '';
+            position: absolute;
+            top: -1px;
+            left: 10px;
+            right: 10px;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--accent-blue), transparent);
+            opacity: 0.5;
+        }
+
+        .preview.active {
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 30px var(--accent-blue-glow);
+        }
+
+        .section-title {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            display: block;
+        }
+
+        .controls .section-title {
+            color: var(--accent-green);
+        }
+
+        .preview .section-title {
+            color: var(--accent-blue);
+            margin-bottom: auto;
+            width: 100%;
+            text-align: left;
+        }
+
+        .form-group {
+            margin-bottom: 2rem;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.95rem;
+            color: var(--text-muted);
+            margin-bottom: 0.75rem;
+        }
+
+        input[type="text"],
+        select {
+            width: 100%;
+            padding: 1rem;
+            background: var(--input-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: white;
+            font-size: 1rem;
+            font-family: inherit;
+            transition: all 0.2s;
+            box-sizing: border-box;
+        }
+
+        input[type="text"]:focus,
+        select:focus {
+            outline: none;
+            border-color: var(--accent-green);
+            background: rgba(0, 0, 0, 0.5);
+            box-shadow: 0 0 15px var(--accent-green-glow);
+        }
+
+        /* Range Slider */
+        input[type="range"] {
+            width: 100%;
+            background: transparent;
+            -webkit-appearance: none;
+        }
+
+        input[type="range"]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            background: var(--border);
+            border-radius: 2px;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 20px;
+            width: 20px;
+            border-radius: 50%;
+            background: var(--accent-green);
+            margin-top: -8px;
+            cursor: pointer;
+            box-shadow: 0 0 10px var(--accent-green);
+        }
+
+        /* Checkboxes */
+        .checkbox-group {
+            display: flex;
+            gap: 1.5rem;
+        }
+
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+            color: var(--text-main);
+            font-size: 0.95rem;
+        }
+
+        input[type="checkbox"] {
+            accent-color: var(--accent-green);
+            width: 1.2rem;
+            height: 1.2rem;
+            cursor: pointer;
+        }
+
+        /* Button */
+        button {
+            width: 100%;
+            padding: 1rem;
+            background: transparent;
+            color: var(--accent-green);
+            border: 1px solid var(--accent-green);
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        button:hover:not(:disabled) {
+            background: var(--accent-green-glow);
+            box-shadow: 0 0 20px var(--accent-green-glow);
+            text-shadow: 0 0 5px var(--accent-green);
+        }
+
+        button:disabled {
+            border-color: var(--border);
+            color: var(--text-muted);
+            cursor: not-allowed;
+        }
+
+        /* Loader */
+        .loader {
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--accent-green);
+            border-bottom-color: transparent;
+            border-radius: 50%;
+            display: inline-block;
+            animation: rotation 1s linear infinite;
+        }
+
+        @keyframes rotation {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        #result-image {
+            max-width: 100%;
+            height: auto;
+            border-radius: 4px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+            margin-top: auto;
+            margin-bottom: auto;
+        }
+
+        #download-link {
+            display: block;
+            width: auto;
+            min-width: 200px;
+            background: transparent;
+            border: 1px solid var(--accent-blue);
+            color: var(--accent-blue);
+            padding: 1rem 2rem;
+            text-align: center;
+            text-decoration: none;
+            border-radius: 8px;
+            margin-top: 2rem;
+            font-weight: 600;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        #download-link:hover {
+            background: var(--accent-blue-glow);
+            box-shadow: 0 0 20px var(--accent-blue-glow);
+            text-shadow: 0 0 5px var(--accent-blue);
+        }
+
+        .distance-display {
+            font-family: monospace;
+            color: var(--accent-green);
+            font-weight: bold;
+            font-size: 1.1rem;
+            margin-left: auto;
+        }
+
+        /* Progress Bar */
+        #loader-container {
+            width: 100%;
+            max-width: 400px;
+        }
+
+        #progress-status {
+            color: var(--accent-blue);
+            font-weight: 600;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        #progress-percent {
+            color: var(--text-muted);
+            font-family: monospace;
+        }
+
+        .progress-bg {
+            background: rgba(255, 255, 255, 0.05);
+            height: 4px;
+            border-radius: 2px;
+            overflow: hidden;
+            margin-top: 0.5rem;
+        }
+
+        #progress-fill {
+            background: var(--accent-blue);
+            height: 100%;
+            width: 0%;
+            transition: width 0.3s ease;
+            box-shadow: 0 0 10px var(--accent-blue);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>City Poster Generator</h1>
+            <p>Create minimalist map art (Powered by OpenStreetMap)</p>
+        </div>
+
+        <div class="workspace">
+            <div class="controls card">
+                <span class="section-title">Configuration</span>
+                <form id="poster-form">
+                    <div class="form-group">
+                        <label for="city">City</label>
+                        <input type="text" id="city" name="city" placeholder="e.g. San Francisco" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="country">Country</label>
+                        <input type="text" id="country" name="country" placeholder="e.g. USA" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="theme">Theme</label>
+                        <select id="theme" name="theme">
+                            {% for theme in themes %}
+                            <option value="{{ theme }}" {% if theme=='feature_based' %}selected{% endif %}>{{
+                                theme|replace('_', ' ')|title }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="font">Font Style</label>
+                        <select id="font" name="font">
+                            <option value="roboto" selected>Roboto (Modern)</option>
+                            <option value="serif">Serif (Classic)</option>
+                            <option value="sans-serif">Sans-Serif (Clean)</option>
+                            <option value="monospace">Monospace (Tech)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Map Features</label>
+                        <div style="display: flex; gap: 1rem; margin-top: 0.5rem;">
+                            <label
+                                style="font-weight: normal; display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                <input type="checkbox" name="layer_roads" checked style="width: auto;"> Roads
+                            </label>
+                            <label
+                                style="font-weight: normal; display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                <input type="checkbox" name="layer_water" checked style="width: auto;"> Water
+                            </label>
+                            <label
+                                style="font-weight: normal; display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                <input type="checkbox" name="layer_parks" checked style="width: auto;"> Parks
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="distance">Map Radius</label>
+                        <div class="range-container">
+                            <input type="range" id="distance" name="distance" min="1000" max="50000" step="1000"
+                                value="29000">
+                            <span id="distance-val" class="distance-display">29.0 km</span>
+                        </div>
+                        <small style="color: var(--text-muted); display: block; margin-top: 0.5rem;">
+                            4-6 km: Dense Cities | 8-12 km: Medium | 15+ km: Large Metros
+                        </small>
+                    </div>
+
+                    <button type="submit" id="generate-btn">
+                        <span class="btn-text">Generate Poster</span>
+                        <span class="loader hidden"></span>
+                    </button>
+                </form>
+            </div>
+
+            <div class="preview card" id="preview-area">
+                <span class="section-title">Values/Preview</span>
+                <div id="placeholder-text" style="text-align: center; color: var(--text-muted);">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+                        style="margin-bottom: 1rem; opacity: 0.5;">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                        <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                        <polyline points="21 15 16 10 5 21"></polyline>
+                    </svg>
+                    <p>Your generated map will appear here.</p>
+                    <p>Generation takes 10-30 seconds depending on city size.</p>
+                </div>
+                <div id="loader-container" class="hidden" style="width: 100%; max-width: 400px; text-align: center;">
+                    <div
+                        style="margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
+                        <span id="progress-status"
+                            style="font-weight: 600; color: var(--primary);">Initializing...</span>
+                        <span id="progress-percent" style="font-family: monospace; color: var(--text-muted);">0%</span>
+                    </div>
+                    <div style="background: var(--border); height: 8px; border-radius: 4px; overflow: hidden;">
+                        <div id="progress-fill"
+                            style="background: var(--primary); height: 100%; width: 0%; transition: width 0.3s ease;">
+                        </div>
+                    </div>
+                </div>
+                <img id="result-image" class="hidden" src="" alt="Generated Map Poster">
+                <a id="download-link" href="#" download class="hidden"
+                    style="display: block; width: 100%; background: #1e293b; color: white; padding: 1rem; text-align: center; text-decoration: none; border-radius: 0.5rem; margin-top: 1rem; font-weight: 600;">Download
+                    High-Res Poster</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const distanceInput = document.getElementById('distance');
+        const distanceVal = document.getElementById('distance-val');
+
+        distanceInput.addEventListener('input', (e) => {
+            const km = (e.target.value / 1000).toFixed(1);
+            distanceVal.textContent = `${km} km`;
+        });
+
+        document.getElementById('poster-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const form = e.target;
+            const btn = document.getElementById('generate-btn');
+            const btnText = btn.querySelector('.btn-text');
+            const placeholder = document.getElementById('placeholder-text');
+            const loaderContainer = document.getElementById('loader-container');
+            const resultImage = document.getElementById('result-image');
+            const progressFill = document.getElementById('progress-fill');
+            const progressStatus = document.getElementById('progress-status');
+            const progressPercent = document.getElementById('progress-percent');
+            const downloadLink = document.getElementById('download-link');
+
+            // Set Loading State
+            btn.disabled = true;
+            btnText.textContent = 'Generating...';
+            placeholder.classList.add('hidden');
+            resultImage.classList.add('hidden');
+            downloadLink.classList.add('hidden');
+            loaderContainer.classList.remove('hidden');
+
+            // Reset progress
+            progressFill.style.width = '0%';
+            progressStatus.textContent = 'Starting...';
+            progressPercent.textContent = '0%';
+
+            const formData = {
+                city: form.city.value,
+                country: form.country.value,
+                theme: form.theme.value,
+                distance: form.distance.value,
+                font: form.font.value,
+                layers: {
+                    roads: form.layer_roads.checked,
+                    water: form.layer_water.checked,
+                    parks: form.layer_parks.checked
+                }
+            };
+
+            try {
+                // Start generation
+                const response = await fetch('/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(formData)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    const jobId = data.job_id;
+
+                    // Poll for status
+                    const pollInterval = setInterval(async () => {
+                        try {
+                            const statusRes = await fetch(`/status/${jobId}`);
+                            const statusData = await statusRes.json();
+
+                            if (statusData.status === 'running') {
+                                // Update progress UI
+                                progressFill.style.width = `${statusData.progress}%`;
+                                progressStatus.textContent = statusData.stage;
+                                progressPercent.textContent = `${statusData.progress}%`;
+                            } else if (statusData.status === 'completed') {
+                                clearInterval(pollInterval);
+                                // Show result
+                                resultImage.src = statusData.result;
+                                resultImage.classList.remove('hidden');
+
+                                // Show download link
+                                downloadLink.href = statusData.result;
+                                downloadLink.classList.remove('hidden');
+
+                                loaderContainer.classList.add('hidden');
+                                btn.disabled = false;
+                                btnText.textContent = 'Generate Poster';
+                            } else if (statusData.status === 'failed') {
+                                clearInterval(pollInterval);
+                                alert(`Error: ${statusData.error}`);
+                                placeholder.classList.remove('hidden');
+                                loaderContainer.classList.add('hidden');
+                                btn.disabled = false;
+                                btnText.textContent = 'Generate Poster';
+                            }
+                        } catch (err) {
+                            console.error("Polling error:", err);
+                        }
+                    }, 1000);
+
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown error occurred'));
+                    placeholder.classList.remove('hidden');
+                    loaderContainer.classList.add('hidden');
+                    btn.disabled = false;
+                    btnText.textContent = 'Generate Poster';
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Connection error. Please check console.');
+                placeholder.classList.remove('hidden');
+                loaderContainer.classList.add('hidden');
+                btn.disabled = false;
+                btnText.textContent = 'Generate Poster';
+            }
+        });
+    </script>
+</body>
+
+</html>

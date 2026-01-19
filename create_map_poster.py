@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('Agg')
 import osmnx as ox
 import matplotlib.pyplot as plt
 from matplotlib.font_manager import FontProperties
@@ -10,10 +12,14 @@ import json
 import os
 from datetime import datetime
 import argparse
+import ssl
+import certifi
 
-THEMES_DIR = "themes"
-FONTS_DIR = "fonts"
-POSTERS_DIR = "posters"
+# Use relative paths for better portability in Flask
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+THEMES_DIR = os.path.join(BASE_DIR, "themes")
+FONTS_DIR = os.path.join(BASE_DIR, "fonts")
+POSTERS_DIR = os.path.join(BASE_DIR, "posters")
 
 def load_fonts():
     """
@@ -94,9 +100,6 @@ def load_theme(theme_name="feature_based"):
             print(f"  {theme['description']}")
         return theme
 
-# Load theme (can be changed via command line or input)
-THEME = None  # Will be loaded later
-
 def create_gradient_fade(ax, color, location='bottom', zorder=10):
     """
     Creates a fade effect at the top or bottom of the map.
@@ -131,7 +134,7 @@ def create_gradient_fade(ax, color, location='bottom', zorder=10):
     ax.imshow(gradient, extent=[xlim[0], xlim[1], y_bottom, y_top], 
               aspect='auto', cmap=custom_cmap, zorder=zorder, origin='lower')
 
-def get_edge_colors_by_type(G):
+def get_edge_colors_by_type(G, theme_config):
     """
     Assigns colors to edges based on road type hierarchy.
     Returns a list of colors corresponding to each edge in the graph.
@@ -148,17 +151,17 @@ def get_edge_colors_by_type(G):
         
         # Assign color based on road type
         if highway in ['motorway', 'motorway_link']:
-            color = THEME['road_motorway']
+            color = theme_config['road_motorway']
         elif highway in ['trunk', 'trunk_link', 'primary', 'primary_link']:
-            color = THEME['road_primary']
+            color = theme_config['road_primary']
         elif highway in ['secondary', 'secondary_link']:
-            color = THEME['road_secondary']
+            color = theme_config['road_secondary']
         elif highway in ['tertiary', 'tertiary_link']:
-            color = THEME['road_tertiary']
+            color = theme_config['road_tertiary']
         elif highway in ['residential', 'living_street', 'unclassified']:
-            color = THEME['road_residential']
+            color = theme_config['road_residential']
         else:
-            color = THEME['road_default']
+            color = theme_config['road_default']
         
         edge_colors.append(color)
     
@@ -199,7 +202,10 @@ def get_coordinates(city, country):
     Includes rate limiting to be respectful to the geocoding service.
     """
     print("Looking up coordinates...")
-    geolocator = Nominatim(user_agent="city_map_poster")
+    
+    # Use certifi's CA bundle for SSL verification
+    ctx = ssl.create_default_context(cafile=certifi.where())
+    geolocator = Nominatim(user_agent="city_map_poster", ssl_context=ctx)
     
     # Add a small delay to respect Nominatim's usage policy
     time.sleep(1)
@@ -213,87 +219,125 @@ def get_coordinates(city, country):
     else:
         raise ValueError(f"Could not find coordinates for {city}, {country}")
 
-def create_poster(city, country, point, dist, output_file):
-    print(f"\nGenerating map for {city}, {country}...")
+def create_poster(city, country, point, dist, output_file, theme_config, progress_callback=None, layers=None, font_style='roboto'):
+    if layers is None:
+        layers = {'roads': True, 'water': True, 'parks': True}
+        
+    print(f"\nGenerating map for {city}, {country} with font: {font_style}...")
+    if progress_callback:
+        progress_callback("Initializing...", 5)
     
     # Progress bar for data fetching
     with tqdm(total=3, desc="Fetching map data", unit="step", bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt}') as pbar:
         # 1. Fetch Street Network
-        pbar.set_description("Downloading street network")
-        G = ox.graph_from_point(point, dist=dist, dist_type='bbox', network_type='all')
-        pbar.update(1)
-        time.sleep(0.5)  # Rate limit between requests
+        G = None
+        if layers.get('roads', True):
+            pbar.set_description("Downloading street network")
+            if progress_callback:
+                progress_callback("Downloading street network...", 10)
+            try:
+                G = ox.graph_from_point(point, dist=dist, dist_type='bbox', network_type='all')
+            except Exception as e:
+                print(f"Warning: Failed to download roads: {e}")
+                G = None
+            pbar.update(1)
+            time.sleep(0.5)  # Rate limit between requests
+        else:
+            pbar.update(1)
         
         # 2. Fetch Water Features
-        pbar.set_description("Downloading water features")
-        try:
-            water = ox.features_from_point(point, tags={'natural': 'water', 'waterway': 'riverbank'}, dist=dist)
-        except:
-            water = None
-        pbar.update(1)
-        time.sleep(0.3)
+        water = None
+        if layers.get('water', True):
+            pbar.set_description("Downloading water features")
+            if progress_callback:
+                progress_callback("Downloading water features...", 30)
+            try:
+                water = ox.features_from_point(point, tags={'natural': 'water', 'waterway': 'riverbank'}, dist=dist)
+            except:
+                water = None
+            pbar.update(1)
+            time.sleep(0.3)
+        else:
+            pbar.update(1)
         
         # 3. Fetch Parks
-        pbar.set_description("Downloading parks/green spaces")
-        try:
-            parks = ox.features_from_point(point, tags={'leisure': 'park', 'landuse': 'grass'}, dist=dist)
-        except:
-            parks = None
-        pbar.update(1)
+        parks = None
+        if layers.get('parks', True):
+            pbar.set_description("Downloading parks/green spaces")
+            if progress_callback:
+                progress_callback("Downloading green spaces...", 50)
+            try:
+                parks = ox.features_from_point(point, tags={'leisure': 'park', 'landuse': 'grass'}, dist=dist)
+            except:
+                parks = None
+            pbar.update(1)
+        else:
+            pbar.update(1)
     
     print("✓ All data downloaded successfully!")
+    if progress_callback:
+        progress_callback("Rendering map layers...", 70)
     
     # 2. Setup Plot
     print("Rendering map...")
-    fig, ax = plt.subplots(figsize=(12, 16), facecolor=THEME['bg'])
-    ax.set_facecolor(THEME['bg'])
+    fig, ax = plt.subplots(figsize=(12, 16), facecolor=theme_config['bg'])
+    ax.set_facecolor(theme_config['bg'])
     ax.set_position([0, 0, 1, 1])
     
     # 3. Plot Layers
     # Layer 1: Polygons
     if water is not None and not water.empty:
-        water.plot(ax=ax, facecolor=THEME['water'], edgecolor='none', zorder=1)
+        water.plot(ax=ax, facecolor=theme_config['water'], edgecolor='none', zorder=1)
     if parks is not None and not parks.empty:
-        parks.plot(ax=ax, facecolor=THEME['parks'], edgecolor='none', zorder=2)
+        parks.plot(ax=ax, facecolor=theme_config['parks'], edgecolor='none', zorder=2)
     
     # Layer 2: Roads with hierarchy coloring
-    print("Applying road hierarchy colors...")
-    edge_colors = get_edge_colors_by_type(G)
-    edge_widths = get_edge_widths_by_type(G)
-    
-    ox.plot_graph(
-        G, ax=ax, bgcolor=THEME['bg'],
-        node_size=0,
-        edge_color=edge_colors,
-        edge_linewidth=edge_widths,
-        show=False, close=False
-    )
+    if G is not None:
+        print("Applying road hierarchy colors...")
+        edge_colors = get_edge_colors_by_type(G, theme_config)
+        edge_widths = get_edge_widths_by_type(G)
+        
+        ox.plot_graph(
+            G, ax=ax, bgcolor=theme_config['bg'],
+            node_size=0,
+            edge_color=edge_colors,
+            edge_linewidth=edge_widths,
+            show=False, close=False
+        )
     
     # Layer 3: Gradients (Top and Bottom)
-    create_gradient_fade(ax, THEME['gradient_color'], location='bottom', zorder=10)
-    create_gradient_fade(ax, THEME['gradient_color'], location='top', zorder=10)
+    create_gradient_fade(ax, theme_config['gradient_color'], location='bottom', zorder=10)
+    create_gradient_fade(ax, theme_config['gradient_color'], location='top', zorder=10)
     
-    # 4. Typography using Roboto font
-    if FONTS:
+    # 4. Typography
+    if progress_callback:
+        progress_callback("Adding typography...", 85)
+    
+    # Font Setup
+    if font_style == 'roboto' and FONTS:
         font_main = FontProperties(fname=FONTS['bold'], size=60)
         font_top = FontProperties(fname=FONTS['bold'], size=40)
         font_sub = FontProperties(fname=FONTS['light'], size=22)
         font_coords = FontProperties(fname=FONTS['regular'], size=14)
     else:
-        # Fallback to system fonts
-        font_main = FontProperties(family='monospace', weight='bold', size=60)
-        font_top = FontProperties(family='monospace', weight='bold', size=40)
-        font_sub = FontProperties(family='monospace', weight='normal', size=22)
-        font_coords = FontProperties(family='monospace', size=14)
+        # Use system fonts based on style
+        family = font_style if font_style in ['serif', 'sans-serif', 'monospace'] else 'sans-serif'
+        weight_main = 'bold'
+        weight_normal = 'normal'
+        
+        font_main = FontProperties(family=family, weight=weight_main, size=60)
+        font_top = FontProperties(family=family, weight=weight_main, size=40)
+        font_sub = FontProperties(family=family, weight=weight_normal, size=22)
+        font_coords = FontProperties(family=family, size=14)
     
     spaced_city = "  ".join(list(city.upper()))
 
     # --- BOTTOM TEXT ---
     ax.text(0.5, 0.14, spaced_city, transform=ax.transAxes,
-            color=THEME['text'], ha='center', fontproperties=font_main, zorder=11)
+            color=theme_config['text'], ha='center', fontproperties=font_main, zorder=11)
     
     ax.text(0.5, 0.10, country.upper(), transform=ax.transAxes,
-            color=THEME['text'], ha='center', fontproperties=font_sub, zorder=11)
+            color=theme_config['text'], ha='center', fontproperties=font_sub, zorder=11)
     
     lat, lon = point
     coords = f"{lat:.4f}° N / {lon:.4f}° E" if lat >= 0 else f"{abs(lat):.4f}° S / {lon:.4f}° E"
@@ -301,25 +345,33 @@ def create_poster(city, country, point, dist, output_file):
         coords = coords.replace("E", "W")
     
     ax.text(0.5, 0.07, coords, transform=ax.transAxes,
-            color=THEME['text'], alpha=0.7, ha='center', fontproperties=font_coords, zorder=11)
+            color=theme_config['text'], alpha=0.7, ha='center', fontproperties=font_coords, zorder=11)
     
     ax.plot([0.4, 0.6], [0.125, 0.125], transform=ax.transAxes, 
-            color=THEME['text'], linewidth=1, zorder=11)
+            color=theme_config['text'], linewidth=1, zorder=11)
 
     # --- ATTRIBUTION (bottom right) ---
-    if FONTS:
+    if font_style == 'roboto' and FONTS:
         font_attr = FontProperties(fname=FONTS['light'], size=8)
     else:
-        font_attr = FontProperties(family='monospace', size=8)
+        family = font_style if font_style in ['serif', 'sans-serif', 'monospace'] else 'sans-serif'
+        font_attr = FontProperties(family=family, size=8)
     
     ax.text(0.98, 0.02, "© OpenStreetMap contributors", transform=ax.transAxes,
-            color=THEME['text'], alpha=0.5, ha='right', va='bottom', 
+            color=theme_config['text'], alpha=0.5, ha='right', va='bottom', 
             fontproperties=font_attr, zorder=11)
 
     # 5. Save
     print(f"Saving to {output_file}...")
-    plt.savefig(output_file, dpi=300, facecolor=THEME['bg'])
+    if progress_callback:
+        progress_callback("Saving final image...", 95)
+        
+    plt.savefig(output_file, dpi=300, facecolor=theme_config['bg'])
     plt.close()
+    
+    if progress_callback:
+        progress_callback("Done!", 100)
+        
     print(f"✓ Done! Poster saved as {output_file}")
 
 def print_examples():
@@ -452,13 +504,13 @@ Examples:
     print("=" * 50)
     
     # Load theme
-    THEME = load_theme(args.theme)
+    theme_config = load_theme(args.theme)
     
     # Get coordinates and generate poster
     try:
         coords = get_coordinates(args.city, args.country)
         output_file = generate_output_filename(args.city, args.theme)
-        create_poster(args.city, args.country, coords, args.distance, output_file)
+        create_poster(args.city, args.country, coords, args.distance, output_file, theme_config)
         
         print("\n" + "=" * 50)
         print("✓ Poster generation complete!")
